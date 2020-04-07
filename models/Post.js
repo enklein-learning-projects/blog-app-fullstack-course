@@ -2,10 +2,11 @@ const postsCollection = require('../db').db().collection("posts")
 const ObjectID = require('mongodb').ObjectID
 const User = require('./User')
 
-let Post = function(data, userid) {
+let Post = function(data, userid, requestedPostId) {
     this.data = data
     this.errors = []
     this.userid = userid
+    this.requestedPostId = requestedPostId
 }
 
 Post.prototype.cleanUp = function() {
@@ -32,14 +33,44 @@ Post.prototype.create = function() {
         this.validate()
         if (!this.errors.length) {
             // save post into database
-            postsCollection.insertOne(this.data).then(() => {
-                resolve()
+            postsCollection.insertOne(this.data).then((info) => {
+                resolve(info.ops[0]._id)
             }).catch(() => {
                 this.errors.push("Please try again later.")
                 reject(this.errors)
             })
         } else {
             reject(this.errors)
+        }
+    })
+}
+
+Post.prototype.update = function() {
+    return new Promise(async (resolve, reject) => {
+        try {
+            let post = await Post.findSingleByID(this.requestedPostId, this.userid)
+            if (post.isVisitorOwner) {
+                // actually update the db
+                let status = await this.actuallyUpdate()
+                resolve(status)
+            } else {
+                reject()
+            }
+        } catch {
+            reject()
+        }
+    })
+}
+
+Post.prototype.actuallyUpdate = function() {
+    return new Promise(async (resolve, reject) => {
+        this.cleanUp()
+        this.validate()
+        if (!this.errors.length) {
+            await postsCollection.findOneAndUpdate({_id: new ObjectID(this.requestedPostId)}, {$set: {title: this.data.title, body: this.data.body}})
+            resolve("success")
+        } else {
+            resolve("failure")
         }
     })
 }
@@ -61,6 +92,7 @@ Post.reusablePostQuery = function(uniqueOperations, visitorId) {
 
         // clean up author property in each post object
         posts = posts.map(function(post) {
+            console.log({authorId: post.autherId, visitorId})
             post.isVisitorOwner = post.authorId.equals(visitorId)
 
             post.author = {
