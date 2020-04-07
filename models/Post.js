@@ -96,6 +96,7 @@ Post.reusablePostQuery = function (uniqueOperations, visitorId) {
         // clean up author property in each post object
         posts = posts.map(function (post) {
             post.isVisitorOwner = post.authorId.equals(visitorId)
+            post.authorId = undefined
 
             post.author = {
                 username: post.author.username,
@@ -129,14 +130,14 @@ Post.findSingleById = function (id, visitorId) {
     })
 }
 
-Post.findByAuthorId = function (authorId) {
+Post.findByAuthorId = function(authorId) {
     return Post.reusablePostQuery([
         { $match: { author: authorId } },
         { $sort: { createdDate: -1 } }
     ])
 }
 
-Post.delete = function (postIdToDelete, currentUserId) {
+Post.delete = function(postIdToDelete, currentUserId) {
     return new Promise(async (resolve, reject) => {
         try {
             let post = await Post.findSingleById(postIdToDelete, currentUserId)
@@ -147,6 +148,20 @@ Post.delete = function (postIdToDelete, currentUserId) {
                 reject()
             }
         } catch {
+            reject()
+        }
+    })
+}
+
+Post.search = function(searchTerm) {
+    return new Promise(async (resolve, reject) => {
+        if (typeof(searchTerm) == "string") {
+            let posts = await Post.reusablePostQuery([
+                {$match: {$text: {$search: searchTerm}}},
+                {$sort: {score: {$meta: "textScore"}}}
+            ])
+            resolve(posts)
+        } else {
             reject()
         }
     })
